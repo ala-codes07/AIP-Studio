@@ -9,6 +9,7 @@ import hmac
 import logging
 import secrets
 import smtplib
+import httpx
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from sqlalchemy import select, update
@@ -49,6 +50,27 @@ def deliver_code(to_email: str, purpose: str, code: str) -> None:
         # Only on local server stdout, never in response, telemetry, or git.
         print(f'\n[AIP LOCAL EMAIL] To: {to_email} | {purpose} code: {code} (valid 10 minutes)\n', flush=True)
         return
+    if settings.EMAIL_MODE == 'brevo':
+        if not settings.BREVO_API_KEY or not settings.SMTP_FROM:
+            raise RuntimeError('HTTPS email requires BREVO_API_KEY and SMTP_FROM.')
+        subject = ('AIP Studio — Verify your email' if purpose == 'verify'
+                   else 'AIP Studio — Reset your password')
+        body = (
+            f'Your AIP Studio {"verification" if purpose == "verify" else "password reset"} code is: {code}\n'
+            f'It expires in {EXPIRY_MINUTES} minutes. If you did not request this, ignore this email.\n'
+        )
+        # HTTPS/443 works on free platforms that block outgoing SMTP. Never log
+        # credentials or OTPs. Sender must be approved in the Brevo account.
+        with httpx.Client(timeout=15.0, trust_env=True) as client:
+            response = client.post(
+                'https://api.brevo.com/v3/smtp/email',
+                headers={'api-key': settings.BREVO_API_KEY,
+                         'accept': 'application/json', 'content-type': 'application/json'},
+                json={'sender': {'email': settings.SMTP_FROM, 'name': 'AIP Studio'},
+                      'to': [{'email': to_email}], 'subject': subject, 'textContent': body},
+            )
+            response.raise_for_status()
+        return
     if not settings.SMTP_HOST or not settings.SMTP_FROM:
         raise RuntimeError('SMTP_HOST and SMTP_FROM must be configured to deliver email.')
     msg = EmailMessage()
@@ -88,9 +110,9 @@ class EmailCodeService:
             code = f'{secrets.randbelow(1_000_000):06d}'
         try:
             deliver_code(user.email, purpose, code)  # fails closed if SMTP unavailable
-        except (RuntimeError, OSError, smtplib.SMTPException) as exc:
+        except (RuntimeError, OSError, smtplib.SMTPException, httpx.HTTPError) as exc:
             logger.exception('email_delivery_failed: purpose=%s', purpose)
-            raise ValidationError('Email delivery is unavailable. Configure SMTP in the server settings and try again.') from exc
+            raise ValidationError('Email delivery is temporarily unavailable. Please try again later.') from exc
         self.db.execute(update(EmailChallenge).where(
             EmailChallenge.user_id == user.id, EmailChallenge.purpose == purpose,
             EmailChallenge.consumed_at.is_(None)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from threading import Event, Thread
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -26,20 +27,42 @@ logger = logging.getLogger("app")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if settings.APP_ENV == "production":
-        if settings.DEBUG or settings.EMAIL_MODE != "smtp" or not (settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD and settings.SMTP_FROM):
-            raise RuntimeError("Production requires DEBUG=false and configured real SMTP email delivery.")
-        if settings.DATABASE_URL.startswith("sqlite") or "local_development_only_change_me" in settings.DATABASE_URL:
-            raise RuntimeError("Production requires PostgreSQL and a unique database password.")
-        if "REPLACE_THIS" in settings.SECRET_KEY:
-            raise RuntimeError("Production SECRET_KEY must be securely generated.")
-    logger.info(
-        "application_starting",
-        extra={"app": settings.APP_NAME, "env": settings.APP_ENV},
-    )
-    yield
-    engine.dispose()
-    logger.info("application_stopped")
+    if settings.is_production:
+        if settings.DEBUG:
+            raise RuntimeError('Production requires DEBUG=false.')
+        if settings.EMAIL_MODE == 'smtp':
+            if not all([settings.SMTP_HOST, settings.SMTP_USER, settings.SMTP_PASSWORD, settings.SMTP_FROM]):
+                raise RuntimeError('Configure SMTP credentials before production deployment.')
+        elif settings.EMAIL_MODE == 'brevo':
+            if not (settings.BREVO_API_KEY and settings.SMTP_FROM):
+                raise RuntimeError('Configure Brevo HTTPS email credentials before production deployment.')
+        else:
+            raise RuntimeError('Production requires SMTP or HTTPS email delivery, not console mode.')
+        if settings.DATABASE_URL.startswith(('sqlite', 'postgres://localhost')) or 'local_development_only_change_me' in settings.DATABASE_URL:
+            raise RuntimeError('Production requires a persistent managed PostgreSQL database.')
+        if any(x in settings.SECRET_KEY for x in ('REPLACE_THIS', 'test-secret-key')):
+            raise RuntimeError('Production SECRET_KEY must be securely generated.')
+        if not settings.BETA_ALLOWED_EMAILS.strip():
+            raise RuntimeError('Invite-only beta requires BETA_ALLOWED_EMAILS.')
+    logger.info('application_starting', extra={'app': settings.APP_NAME, 'env': settings.APP_ENV})
+    stop_worker = Event()
+    worker_thread = None
+    if settings.EMBEDDED_SCAN_WORKER:
+        # ONLY one Uvicorn process/instance when this flag is set. Paid deployments
+        # should switch to a separate worker service and disable this option.
+        from app.scripts.scan_worker import run_worker
+        worker_thread = Thread(target=run_worker,
+                               kwargs={'stop_event': stop_worker},
+                               daemon=True, name='aip-embedded-scan-worker')
+        worker_thread.start()
+    try:
+        yield
+    finally:
+        stop_worker.set()
+        if worker_thread:
+            worker_thread.join(timeout=2)
+        engine.dispose()
+        logger.info('application_stopped')
 
 
 def create_app() -> FastAPI:

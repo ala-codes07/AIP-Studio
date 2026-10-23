@@ -12,14 +12,26 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import get_settings
 
 settings = get_settings()
+
+
+def normalized_database_url(value: str) -> str:
+    """Convert provider-issued Postgres URLs to installed psycopg v3 dialect."""
+    if value.startswith('postgres://'):
+        return 'postgresql+psycopg://' + value[len('postgres://'):]
+    if value.startswith('postgresql://'):
+        return 'postgresql+psycopg://' + value[len('postgresql://'):]
+    return value
+
+
+database_url = normalized_database_url(settings.DATABASE_URL)
 engine_kwargs: dict = {"echo": settings.DB_ECHO, "pool_pre_ping": True}
-is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+is_sqlite = database_url.startswith("sqlite")
 if is_sqlite:
     engine_kwargs["connect_args"] = {"check_same_thread": False, "timeout": 30.0}
 else:
     engine_kwargs.update(pool_size=settings.DB_POOL_SIZE, max_overflow=settings.DB_MAX_OVERFLOW)
 
-engine = create_engine(settings.DATABASE_URL, **engine_kwargs)
+engine = create_engine(database_url, **engine_kwargs)
 
 if is_sqlite:
     @event.listens_for(engine, "connect")

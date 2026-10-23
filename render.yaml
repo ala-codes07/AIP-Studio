@@ -1,0 +1,40 @@
+# Invite-only beta on Render Free + external Neon Free PostgreSQL.
+# Never commit API keys, database URLs or user email addresses.
+services:
+  - type: web
+    name: aip-studio-beta
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    dockerCommand: python -m app.scripts.start_cloud
+    healthCheckPath: /api/v1/health/ready
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: EMAIL_MODE
+        value: brevo
+      - key: BREVO_API_KEY
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: BETA_ALLOWED_EMAILS
+        sync: false
+      - key: EMBEDDED_SCAN_WORKER
+        value: "true"
+      - key: LLM_PROVIDER
+        value: local
+      - key: DB_POOL_SIZE
+        value: "2"
+      - key: DB_MAX_OVERFLOW
+        value: "2"
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "30"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "7"

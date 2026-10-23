@@ -45,13 +45,19 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
 
     # ── Email delivery (SMTP for real delivery; console only for local development) ─
-    EMAIL_MODE: Literal["console", "smtp"] = "console"
+    EMAIL_MODE: Literal["console", "smtp", "brevo"] = "console"
     SMTP_HOST: str = ""
     SMTP_PORT: int = Field(default=587, ge=1, le=65535)
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM: str = ""
     SMTP_SECURITY: Literal["starttls", "ssl"] = "starttls"
+    BREVO_API_KEY: str = ""  # HTTPS transactional email on hosts blocking SMTP
+
+    # Invite-only early beta (comma-separated address list; never hard-code identities).
+    BETA_ALLOWED_EMAILS: str = ""
+    # Single-process background scan worker for free hosts without worker service.
+    EMBEDDED_SCAN_WORKER: bool = False
 
     # ── Integrations (Phase 3+) ────────────────────────────────
     LLM_PROVIDER: str = "local"

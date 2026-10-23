@@ -69,6 +69,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         if request.url.path.startswith('/api/v1/auth'):
             response.headers['Cache-Control'] = 'no-store'
+        from app.core.config import get_settings
+        if get_settings().is_production:
+            response.headers['Strict-Transport-Security'] = 'max-age=31536000'
         return response
 
 

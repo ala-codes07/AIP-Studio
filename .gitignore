@@ -50,10 +50,7 @@ aip-seo-audit-*.csv
 # Local process/state outputs
 *.pid
 *.out
-*.zip
-*.bak
+
+# Private Search Console exports; only the synthetic demonstration file is public
 *.csv
-*.log
-.env
-.env.*
-!.env.example
+!docs/examples/demo-gsc-queries.csv

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import logging
 import time
+from threading import Event
 from sqlalchemy.exc import OperationalError
 from app.db.session import SessionLocal
 from app.services.scan_queue import process_one, fail_stale_jobs
@@ -12,14 +13,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(mess
 log = logging.getLogger('aip.scan.worker')
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--once', action='store_true',
-                        help='Attempt one queued job, then exit.')
-    options = parser.parse_args()
+def run_worker(*, stop_event: Event | None = None, once: bool = False) -> None:
+    # Can be hosted in a background thread on a single free web process.
+    stop_event = stop_event or Event()
     log.info('AIP Studio scan worker started')
     next_stale_check = 0.0
-    while True:
+    while not stop_event.is_set():
         processed = False
         try:
             with SessionLocal() as db:
@@ -34,20 +33,28 @@ def main():
                 log.warning('SQLite is busy. Retrying without losing the queued scan.')
             else:
                 log.exception('Worker database error')
-            if options.once:
+            if once:
                 raise
-            time.sleep(3.0)
+            stop_event.wait(3.0)
             continue
         except Exception:
             log.exception('Unexpected scan worker error; retrying.')
-            if options.once:
+            if once:
                 raise
-            time.sleep(3.0)
+            stop_event.wait(3.0)
             continue
-        if options.once:
+        if once:
             break
         if not processed:
-            time.sleep(1.5)
+            stop_event.wait(1.5)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--once', action='store_true',
+                        help='Attempt one queued job, then exit.')
+    options = parser.parse_args()
+    run_worker(once=options.once)
 
 
 if __name__ == '__main__':

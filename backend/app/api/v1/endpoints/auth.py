@@ -16,13 +16,20 @@ from app.schemas.user import UserRead
 from app.services.auth_service import AuthService
 from app.services.email_codes import EmailCodeService
 from app.core.security import hash_password, verify_password
-from app.core.exceptions import AuthenticationError, ValidationError
+from app.core.exceptions import AuthenticationError, ValidationError, AuthorizationError
 from app.models.auth_session import RefreshSession
 from app.repositories.user_repository import UserRepository
 from datetime import datetime, timezone
 from sqlalchemy import update
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def registration_invited(email: str, allowed: str) -> bool:
+    """Early public beta: registration must be allowlisted server-side."""
+    permitted = {v.strip().casefold() for v in allowed.split(',') if v.strip()}
+    return email.strip().casefold() in permitted
+
 
 
 def _client_ip(request: Request) -> str | None:
@@ -40,6 +47,10 @@ def register(
     request: Request,
     db: Session = Depends(get_db),
 ) -> User:
+    from app.core.config import get_settings
+    settings = get_settings()
+    if settings.is_production and not registration_invited(str(payload.email), settings.BETA_ALLOWED_EMAILS):
+        raise AuthorizationError('Registration is invite-only for the current beta.')
     _check_password_length(payload.password)
     return AuthService(db).register(payload, ip_address=_client_ip(request))
 

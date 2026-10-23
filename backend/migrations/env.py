@@ -8,12 +8,15 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.core.config import get_settings
+from app.db.session import normalized_database_url
 from app.models import Base  # noqa: F401  (imports every model)
 
 config = context.config
 settings = get_settings()
 
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+database_url = normalized_database_url(settings.DATABASE_URL)
+# ConfigParser interprets percent escapes in quoted URL passwords.
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -23,7 +26,7 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=settings.DATABASE_URL,
+        url=database_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
