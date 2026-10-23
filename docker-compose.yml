@@ -1,0 +1,46 @@
+name: aip
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aip}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-aip}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aip} -d ${POSTGRES_DB:-aip}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-aip}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aip}
+      APP_ENV: development
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-aip}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aip}
+      APP_ENV: development
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: ["python", "-m", "app.scripts.scan_worker"]
+volumes:
+  pgdata:

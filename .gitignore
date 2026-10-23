@@ -1,0 +1,59 @@
+# Secrets and local state
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite*
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+# JS
+node_modules/
+.next/
+
+# Runtime logs, backups and exports (may contain private URLs, emails or data)
+*.log
+*.bak
+*.backup
+*.backup-*
+*.db-*
+*.db.backup*
+*.sqlite3-*
+*.csv.bak
+*.zip
+*.rar
+*.7z
+*Performance-on-Search*
+aip-seo-audit-*.csv
+
+# Private key material
+*.pem
+*.p12
+*.pfx
+*.key
+
+# Local process/state outputs
+*.pid
+*.out
+*.zip
+*.bak
+*.csv
+*.log
+.env
+.env.*
+!.env.example
